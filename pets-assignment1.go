@@ -1,46 +1,95 @@
 package main
 
 import (
-	"fmt"
-	"net"
 	"bufio"
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/rsa"
-	"io/ioutil"
+	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
+	"fmt"
+	"io/ioutil"
 	"net"
-	"bufio"
 )
 
-func main() {
+func genRandByte(n int) []byte {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func readPubKey() *rsa.PublicKey {
 	// read .pem from files
-	pemA, _ := ioutil.ReadFile("public_key_A.pem")
-	pemB, _ := ioutil.ReadFile("public_key_B.pem")
-	pemC, _ := ioutil.ReadFile("public_key_C.pem")
-	pemCache, _ := ioutil.ReadFile("public_key_Cache.pem")
+	blockA, _ := ioutil.ReadFile("public_key_A.pem")
+	pemA, _ := pem.Decode(blockA)
 
-	// decode pubkey
-	pubKeyA, _ := pem.Decode(pemA)
-	pubKeyB, _ := pem.Decode(pemB)
-	pubKeyC, _ := pem.Decode(pemC)
-	pubKeyCache, _ := pem.Decode(pemCache)
+	pub, err := x509.ParsePKIXPublicKey(pemA.Bytes)
+	if err != nil {
+		panic(err)
+	}
 
-	// TODO : use pubkey, generate IV, encrypt and stuffs
+	rsaPk, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		panic("value returned from ParsePKIXPublicKey was not an RSA public key")
+	}
 
-	originalMsg := "4501543 and KELONG_STUDENT_NUMBER"
-	encodedOriginalMsg := []byte(originalMsg)
+	return rsaPk
+}
 
-	var encodedFinalMessage []byte
+func main() {
+
+	// plaintext padded by pkcs7
+	pt, err := pkcs7Pad([]byte("this is some plaintext that we're going to send"), aes.BlockSize)
+	if err != nil {
+		panic(err)
+	}
+
+	// make space for ciphertext
+	ctAES := make([]byte, len(pt))
+
+	// set up AES
+	// TODO what block size do we use? the default is 16
+	key := genRandByte(aes.BlockSize)
+	iv := genRandByte(aes.BlockSize)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+
+	enc := cipher.NewCBCEncrypter(block, iv)
+	enc.CryptBlocks(ctAES, pt)
+
+	// set up RSA
+	// TODO EncryptPKCS1v15 isn't vanilla RSA, so this this probably won't work
+	pk := readPubKey()
+	ctRSA, err := rsa.EncryptPKCS1v15(rand.Reader, pk, append(key, iv...))
+	if err != nil {
+		panic(err)
+	}
 
 	// connect to socket
 	conn, err := net.Dial("tcp", "pets.ewi.utwente.nl:52096")
 	if err != nil {
-		fmt.Println("error occured when connecting")
+		panic(err)
 	}
 
 	// write to socket
-	conn.Write(uint32(len(encodedFinalMessage)))
-	conn.Write(encodedFinalMessage)
+	finalMsg := append(ctRSA, ctAES...)
+	lenMsg := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenMsg, uint32(len(finalMsg)))
+
+	conn.Write(lenMsg)
+	conn.Write(finalMsg)
+
 	response, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(response)
 }
