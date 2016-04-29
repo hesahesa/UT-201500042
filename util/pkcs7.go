@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 )
 
 // Appends padding.
-func pkcs7Pad(data []byte, blocklen int) ([]byte, error) {
+func Pad(data []byte, blocklen int) ([]byte, error) {
 	if blocklen <= 0 {
 		return nil, fmt.Errorf("invalid blocklen %d", blocklen)
 	}
@@ -20,7 +20,7 @@ func pkcs7Pad(data []byte, blocklen int) ([]byte, error) {
 }
 
 // Returns slice of the original data without padding.
-func pkcs7Unpad(data []byte, blocklen int) ([]byte, error) {
+func Unpad(data []byte, blocklen int) ([]byte, error) {
 	if blocklen <= 0 {
 		return nil, fmt.Errorf("invalid blocklen %d", blocklen)
 	}

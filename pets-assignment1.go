@@ -1,50 +1,21 @@
 package main
 
 import (
-	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
+	"crypto/sha1"
 	"encoding/binary"
-	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net"
 )
 
-func genRandByte(n int) []byte {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
+import "github.com/hesahesa/UT-201500042/util"
 
-func readPubKey() *rsa.PublicKey {
-	// read .pem from files
-	blockA, _ := ioutil.ReadFile("public_key_A.pem")
-	pemA, _ := pem.Decode(blockA)
-
-	pub, err := x509.ParsePKIXPublicKey(pemA.Bytes)
-	if err != nil {
-		panic(err)
-	}
-
-	rsaPk, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		panic("value returned from ParsePKIXPublicKey was not an RSA public key")
-	}
-
-	return rsaPk
-}
-
-func main() {
-
-	// plaintext padded by pkcs7
-	pt, err := pkcs7Pad([]byte("this is some plaintext that we're going to send"), aes.BlockSize)
+func wrapOnce(m []byte, key []byte, iv []byte, pk *rsa.PublicKey) []byte {
+	// padded by pkcs7
+	pt, err := util.Pad(m, aes.BlockSize)
 	if err != nil {
 		panic(err)
 	}
@@ -53,10 +24,6 @@ func main() {
 	ctAES := make([]byte, len(pt))
 
 	// set up AES
-	// TODO what block size do we use? the default is 16
-	key := genRandByte(aes.BlockSize)
-	iv := genRandByte(aes.BlockSize)
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		panic(err)
@@ -66,30 +33,63 @@ func main() {
 	enc.CryptBlocks(ctAES, pt)
 
 	// set up RSA
-	// TODO EncryptPKCS1v15 isn't vanilla RSA, so this this probably won't work
-	pk := readPubKey()
-	ctRSA, err := rsa.EncryptPKCS1v15(rand.Reader, pk, append(key, iv...))
+	ctRSA, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, pk, append(key, iv...), nil)
 	if err != nil {
 		panic(err)
 	}
 
+	return append(ctRSA, ctAES...)
+}
+
+func wrap(m []byte, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey) []byte {
+	if len(keys) != len(ivs) || len(keys) != len(pks) {
+		panic("keys, ivs and pks must have the same length!")
+	}
+
+	for i := range keys {
+		fmt.Println("Wrapping", keys[i], ivs[i], pks[i])
+		m = wrapOnce(m, keys[i], ivs[i], pks[i])
+	}
+	return m
+}
+
+func main() {
+	// generate/read ahe keys
+	fmt.Println("Reading keys")
+	pks := util.ReadAllPubKeys(
+		[]string{
+			"public_key_Cache.pem",
+			"public_key_C.pem",
+			"public_key_B.pem",
+			"public_key_A.pem",
+		})
+	ivs := util.GenSliceOfBytes(aes.BlockSize, 4)
+	keys := util.GenSliceOfBytes(aes.BlockSize, 4)
+
+	// create the message
+	tim := make([]byte, 8)
+	copy(tim, "TIM")
+	netid := []byte("4501543")
+	m := append(tim, netid...)
+
+	// wrap the message
+	ct := wrap(m, keys, ivs, pks)
+	ctLen := make([]byte, 4)
+	binary.BigEndian.PutUint32(ctLen, uint32(len(ct)))
+
 	// connect to socket
-	conn, err := net.Dial("tcp", "pets.ewi.utwente.nl:52096")
+	addr := "pets.ewi.utwente.nl:52096"
+	fmt.Println("Connecting to", addr)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		panic(err)
 	}
 
 	// write to socket
-	finalMsg := append(ctRSA, ctAES...)
-	lenMsg := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenMsg, uint32(len(finalMsg)))
-
-	conn.Write(lenMsg)
-	conn.Write(finalMsg)
-
-	response, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
+	fmt.Println("Sending message", ct)
+	conn.Write(ctLen)
+	conn.Write(ct)
+	if conn.Close() != nil {
 		panic(err)
 	}
-	fmt.Println(response)
 }
