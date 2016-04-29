@@ -47,7 +47,6 @@ func wrap(m []byte, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey) []byte {
 	}
 
 	for i := range keys {
-		fmt.Println("Wrapping", keys[i], ivs[i], pks[i])
 		m = wrapOnce(m, keys[i], ivs[i], pks[i])
 	}
 	return m
@@ -55,7 +54,7 @@ func wrap(m []byte, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey) []byte {
 
 func main() {
 	// generate/read ahe keys
-	fmt.Println("Reading keys")
+	fmt.Println("Reading keys...")
 	pks := util.ReadAllPubKeys(
 		[]string{
 			"public_key_Cache.pem",
@@ -67,9 +66,8 @@ func main() {
 	keys := util.GenSliceOfBytes(aes.BlockSize, 4)
 
 	// create the message
-	tim := make([]byte, 8)
-	copy(tim, "TIM")
-	netid := []byte("4501543")
+	tim := []byte("TIM     ") // pad with spaces or \0?
+	netid := []byte("4501543, 4520009")
 	m := append(tim, netid...)
 
 	// wrap the message
@@ -86,7 +84,7 @@ func main() {
 	}
 
 	// write to socket
-	fmt.Println("Sending message", ct)
+	fmt.Println("Sending message...")
 	conn.Write(ctLen)
 	conn.Write(ct)
 	if conn.Close() != nil {
