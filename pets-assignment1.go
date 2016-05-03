@@ -108,11 +108,12 @@ func main() {
 	participant := flag.String("participant", "TIM", "name of the participant")
 	n := flag.Int("n", 1, "number of messages to send")
 	msg := flag.String("msg", "4501543, 4520009", "content of the message")
-	contmod := flag.Bool("continous", false, "enable continous mode, ignore other flags")
+	contmod := flag.Bool("continuous", false, "enable continuous mode, ignore other flags")
+	delay := flag.Int("delay", 0, "delay in seconds between sending messages, only in continuous mode")
 	flag.Parse()
 
 	if *contmod == true {
-		fmt.Println("continous mode")
+		fmt.Println("continuous mode")
 		ctr := 1
 		prev := ""
 		for {
@@ -137,7 +138,7 @@ func main() {
 
 			resp.Body.Close()
 			ctr = ctr + 1
-			time.Sleep(time.Duration(2)*time.Second)
+			time.Sleep(time.Duration(*delay)*time.Second)
 		}
 	} else {
 		sendmessage(participant, msg, keys, ivs, pks, n)
