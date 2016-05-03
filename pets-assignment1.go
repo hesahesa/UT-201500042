@@ -73,6 +73,9 @@ func main() {
 	flag.Parse()
 
 	// wrap the message to create the ciphertext
+	if len(*participant) > 8 {
+		*participant = (*participant)[:8]
+	}
 	ct := wrap(
 		append([]byte(fmt.Sprintf("%-8s", *participant)), []byte(*msg)...),
 		keys,
