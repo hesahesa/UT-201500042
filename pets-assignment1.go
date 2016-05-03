@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,16 +10,14 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
-	"net"
-)
-
-import (
-	"github.com/hesahesa/UT-201500042/util"
-	"net/http"
 	"io/ioutil"
+	"net"
+	"net/http"
 	"strconv"
 	"time"
 )
+
+import "github.com/hesahesa/UT-201500042/util"
 
 func wrapOnce(m []byte, key []byte, iv []byte, pk *rsa.PublicKey) []byte {
 	// padded by pkcs7
@@ -79,6 +78,11 @@ func sendmessage(participant *string, msg *string, keys [][]byte, ivs [][]byte, 
 	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		if conn.Close() != nil {
+			panic(err)
+		}
+	}()
 
 	// write to socket n times
 	fmt.Println("Sending message...")
@@ -86,8 +90,29 @@ func sendmessage(participant *string, msg *string, keys [][]byte, ivs [][]byte, 
 		conn.Write(ctLen)
 		conn.Write(ct)
 	}
-	if conn.Close() != nil {
+}
+
+func getCache() []byte {
+	resp, err := http.Get("http://pets.ewi.utwente.nl:63936/log/cache")
+	if err != nil {
 		panic(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	return body
+}
+
+func writeCacheToFile(fname string) {
+	var prev []byte
+	body := getCache()
+
+	if bytes.Equal(prev, body) {
+		prev = body
+		fmt.Println(fname)
+		err := ioutil.WriteFile(fname+".txt", body, 0644)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -108,39 +133,24 @@ func main() {
 	participant := flag.String("participant", "TIM", "name of the participant")
 	n := flag.Int("n", 1, "number of messages to send")
 	msg := flag.String("msg", "4501543, 4520009", "content of the message")
-	contmod := flag.Bool("continuous", false, "enable continuous mode, ignore other flags")
+	contmod := flag.Bool("continuous", false, "enable continuous mode; n and msg flags are ignored")
 	delay := flag.Int("delay", 0, "delay in seconds between sending messages, only in continuous mode")
 	flag.Parse()
 
-	if *contmod == true {
+	if *contmod {
 		fmt.Println("continuous mode")
 		ctr := 1
-		prev := ""
 		for {
 			*msg = strconv.Itoa(ctr)
 			*n = 1
 			sendmessage(participant, msg, keys, ivs, pks, n)
-			resp, err := http.Get("http://pets.ewi.utwente.nl:63936/log/cache")
-			if err != nil {
-				panic(err)
-			}
-			body, err := ioutil.ReadAll(resp.Body)
-			strbody := string(body)
-
-			if(prev != strbody) {
-				prev = strbody
-				fmt.Println(ctr)
-				err := ioutil.WriteFile(strconv.Itoa(ctr) + ".txt", body, 0644)
-				if err != nil {
-					panic(err)
-				}
-			}
-
-			resp.Body.Close()
 			ctr = ctr + 1
-			time.Sleep(time.Duration(*delay)*time.Second)
+			writeCacheToFile(strconv.Itoa(ctr))
+			time.Sleep(time.Duration(*delay) * time.Second)
 		}
 	} else {
 		sendmessage(participant, msg, keys, ivs, pks, n)
+		time.Sleep(1 * time.Second)
+		fmt.Println(string(getCache()))
 	}
 }
