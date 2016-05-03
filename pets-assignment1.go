@@ -12,7 +12,11 @@ import (
 	"net"
 )
 
-import "github.com/hesahesa/UT-201500042/util"
+import (
+	"github.com/hesahesa/UT-201500042/util"
+	"net/http"
+	"io/ioutil"
+)
 
 func wrapOnce(m []byte, key []byte, iv []byte, pk *rsa.PublicKey) []byte {
 	// padded by pkcs7
@@ -53,25 +57,7 @@ func wrap(m []byte, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey) []byte {
 	return m
 }
 
-func main() {
-	// generate/read the keys
-	fmt.Println("Reading keys...")
-	pks := util.ReadAllPubKeys(
-		[]string{
-			"public_key_Cache.pem",
-			"public_key_C.pem",
-			"public_key_B.pem",
-			"public_key_A.pem",
-		})
-	ivs := util.GenSliceOfBytes(aes.BlockSize, 4)
-	keys := util.GenSliceOfBytes(aes.BlockSize, 4)
-
-	// let user specify the message content if needed
-	participant := flag.String("participant", "TIM", "name of the participant")
-	n := flag.Int("n", 1, "number of messages to send")
-	msg := flag.String("msg", "4501543, 4520009", "content of the message")
-	flag.Parse()
-
+func sendmessage(participant *string, msg *string, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey, n *int) {
 	// wrap the message to create the ciphertext
 	if len(*participant) > 8 {
 		*participant = (*participant)[:8]
@@ -100,5 +86,41 @@ func main() {
 	}
 	if conn.Close() != nil {
 		panic(err)
+	}
+}
+
+func main() {
+	// generate/read the keys
+	fmt.Println("Reading keys...")
+	pks := util.ReadAllPubKeys(
+		[]string{
+			"public_key_Cache.pem",
+			"public_key_C.pem",
+			"public_key_B.pem",
+			"public_key_A.pem",
+		})
+	ivs := util.GenSliceOfBytes(aes.BlockSize, 4)
+	keys := util.GenSliceOfBytes(aes.BlockSize, 4)
+
+	// let user specify the message content if needed
+	participant := flag.String("participant", "TIM", "name of the participant")
+	n := flag.Int("n", 1, "number of messages to send")
+	msg := flag.String("msg", "4501543, 4520009", "content of the message")
+	contmod := flag.Bool("continous", false, "enable continous mode, ignore other flags")
+	flag.Parse()
+
+	if *contmod == true {
+		// TODO: fire up messages with content = {1,2,3,4,...} continously and read the log
+		// TODO: save the response body to file (?) if it is different from before for analysis
+		fmt.Println("continous mode")
+		resp, err := http.Get("http://pets.ewi.utwente.nl:63936/log/cache")
+		if err != nil {
+			// handle error
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		fmt.Println(body)
+	} else {
+		sendmessage(participant, msg, keys, ivs, pks, n)
 	}
 }
