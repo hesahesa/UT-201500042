@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha1"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"net"
 )
@@ -53,7 +54,7 @@ func wrap(m []byte, keys [][]byte, ivs [][]byte, pks []*rsa.PublicKey) []byte {
 }
 
 func main() {
-	// generate/read ahe keys
+	// generate/read the keys
 	fmt.Println("Reading keys...")
 	pks := util.ReadAllPubKeys(
 		[]string{
@@ -65,13 +66,18 @@ func main() {
 	ivs := util.GenSliceOfBytes(aes.BlockSize, 4)
 	keys := util.GenSliceOfBytes(aes.BlockSize, 4)
 
-	// create the message
-	tim := []byte("TIM     ") // pad with spaces or \0?
-	netid := []byte("4501543, 4520009")
-	m := append(tim, netid...)
+	// let user specify the message content if needed
+	participant := flag.String("participant", "TIM", "name of the participant")
+	n := flag.Int("n", 1, "number of messages to send")
+	msg := flag.String("msg", "4501543, 4520009", "content of the message")
+	flag.Parse()
 
-	// wrap the message
-	ct := wrap(m, keys, ivs, pks)
+	// wrap the message to create the ciphertext
+	ct := wrap(
+		append([]byte(fmt.Sprintf("%-8s", *participant)), []byte(*msg)...),
+		keys,
+		ivs,
+		pks)
 	ctLen := make([]byte, 4)
 	binary.BigEndian.PutUint32(ctLen, uint32(len(ct)))
 
@@ -83,10 +89,12 @@ func main() {
 		panic(err)
 	}
 
-	// write to socket
+	// write to socket n times
 	fmt.Println("Sending message...")
-	conn.Write(ctLen)
-	conn.Write(ct)
+	for i := 0; i < *n; i++ {
+		conn.Write(ctLen)
+		conn.Write(ct)
+	}
 	if conn.Close() != nil {
 		panic(err)
 	}
