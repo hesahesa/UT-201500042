@@ -16,6 +16,8 @@ import (
 	"github.com/hesahesa/UT-201500042/util"
 	"net/http"
 	"io/ioutil"
+	"strconv"
+	"time"
 )
 
 func wrapOnce(m []byte, key []byte, iv []byte, pk *rsa.PublicKey) []byte {
@@ -110,16 +112,33 @@ func main() {
 	flag.Parse()
 
 	if *contmod == true {
-		// TODO: fire up messages with content = {1,2,3,4,...} continously and read the log
-		// TODO: save the response body to file (?) if it is different from before for analysis
 		fmt.Println("continous mode")
-		resp, err := http.Get("http://pets.ewi.utwente.nl:63936/log/cache")
-		if err != nil {
-			// handle error
+		ctr := 1
+		prev := ""
+		for {
+			*msg = strconv.Itoa(ctr)
+			*n = 1
+			sendmessage(participant, msg, keys, ivs, pks, n)
+			resp, err := http.Get("http://pets.ewi.utwente.nl:63936/log/cache")
+			if err != nil {
+				panic(err)
+			}
+			body, err := ioutil.ReadAll(resp.Body)
+			strbody := string(body)
+
+			if(prev != strbody) {
+				prev = strbody
+				fmt.Println(ctr)
+				err := ioutil.WriteFile(strconv.Itoa(ctr) + ".txt", body, 0644)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			resp.Body.Close()
+			ctr = ctr + 1
+			time.Sleep(time.Duration(2)*time.Second)
 		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Println(body)
 	} else {
 		sendmessage(participant, msg, keys, ivs, pks, n)
 	}
