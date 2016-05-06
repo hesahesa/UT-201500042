@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -102,17 +101,21 @@ func getCache() []byte {
 	return body
 }
 
-func writeCacheToFile(fname string) {
-	var prev []byte
+func writeCacheToFile(fname string, prev string) string{
+	// compare previous response with current response
+	// only write to file if it is different
+	// so, only write if we got new line(s) in the log
 	body := getCache()
 
-	if bytes.Equal(prev, body) {
-		prev = body
+	if prev != string(body) {
 		fmt.Println(fname)
 		err := ioutil.WriteFile(fname+".txt", body, 0644)
 		if err != nil {
 			panic(err)
 		}
+		return string(body)
+	} else {
+		return prev
 	}
 }
 
@@ -140,13 +143,14 @@ func main() {
 	if *contmod {
 		fmt.Println("continuous mode")
 		ctr := 1
+		prev := ""
 		for {
 			*msg = strconv.Itoa(ctr)
 			*n = 1
 			sendmessage(participant, msg, keys, ivs, pks, n)
-			ctr = ctr + 1
-			writeCacheToFile(strconv.Itoa(ctr))
+			prev = writeCacheToFile(strconv.Itoa(ctr), prev)
 			time.Sleep(time.Duration(*delay) * time.Second)
+			ctr = ctr + 1
 		}
 	} else {
 		sendmessage(participant, msg, keys, ivs, pks, n)
