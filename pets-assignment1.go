@@ -147,7 +147,11 @@ func main() {
 		for {
 			*msg = strconv.Itoa(ctr)
 			*n = 1
+
 			sendmessage(participant, msg, keys, ivs, pks, n)
+			// wait after sending message before reading log, cant do it too fast
+			time.Sleep(time.Duration(1) * time.Second)
+
 			prev = writeCacheToFile(strconv.Itoa(ctr), prev)
 			time.Sleep(time.Duration(*delay) * time.Second)
 			ctr = ctr + 1
